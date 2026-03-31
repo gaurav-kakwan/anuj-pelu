@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Secure Mail Console</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+ 
+<div class="page">
+<div class="card">
+<h2 class="title">📧 Secure Mail Console</h2>
+ 
+    <div class="form-grid">
+<!-- Row 1 -->
+<div class="row">
+<input id="senderName" placeholder="Sender Name">
+<input id="gmail" placeholder="Your Gmail">
+</div>
+ 
+      <!-- Row 2 -->
+<div class="row">
+<input id="apppass" type="password" placeholder="App Password">
+<input id="subject" placeholder="Email Subject">
+</div>
+ 
+      <!-- Row 3: Message & Recipients Side by Side -->
+<div class="row big-inputs">
+<textarea id="message" placeholder="Message Body"></textarea>
+<textarea id="to" placeholder="Recipients (comma / new line)"></textarea>
+</div>
+</div>
+ 
+    <div class="btn-row">
+<button id="sendBtn">Send All</button>
+<button id="logoutBtn">Logout</button>
+</div>
+</div>
+</div>
+ 
+<script src="script.js"></script>
+</body>
+</html>
