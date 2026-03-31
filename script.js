@@ -19,100 +19,49 @@
     });
 })();
 
-// Custom popup instead of alert
+// Top popup
 function showResult(sent, fail) {
-    var overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    var popup = document.createElement('div');
+    popup.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px 32px;border-radius:12px;font-size:16px;font-weight:600;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);animation:popIn 0.3s ease;';
 
-    var box = document.createElement('div');
-    box.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 40px;text-align:center;min-width:280px;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+    var text = '';
+    if (sent > 0) text += '✅ Sent: ' + sent + '   ';
+    if (fail > 0) text += '❌ Fail: ' + fail;
 
-    var html = '';
+    popup.innerHTML = text + '<span style="cursor:pointer;margin-left:8px;opacity:0.7;" onclick="this.parentElement.remove()">✕</span>';
 
-    if (sent > 0) {
-        html += '<div style="font-size:48px;margin-bottom:8px;">✅</div>';
-        html += '<div style="color:#6ee7b7;font-size:20px;font-weight:700;margin-bottom:6px;">' + sent + ' Sent</div>';
-    }
-    if (fail > 0) {
-        html += '<div style="font-size:48px;margin-bottom:8px;">❌</div>';
-        html += '<div style="color:#fca5a5;font-size:20px;font-weight:700;margin-bottom:6px;">' + fail + ' Failed</div>';
-    }
+    var style = document.createElement('style');
+    style.textContent = '@keyframes popIn{from{transform:translateX(-50%) translateY(-30px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}';
+    popup.appendChild(style);
 
-    html += '<button id="closePopup" style="margin-top:20px;padding:10px 40px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">OK</button>';
+    document.body.appendChild(popup);
 
-    box.innerHTML = html;
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-
-    document.getElementById('closePopup').addEventListener('click', function () {
-        document.body.removeChild(overlay);
-    });
+    setTimeout(function () {
+        popup.style.transition = 'opacity 0.4s';
+        popup.style.opacity = '0';
+        setTimeout(function () { popup.remove(); }, 400);
+    }, 4000);
 }
 
 function showError(msg) {
-    var overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    var popup = document.createElement('div');
+    popup.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:16px 32px;border-radius:12px;font-size:16px;font-weight:600;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);animation:popIn 0.3s ease;';
 
-    var box = document.createElement('div');
-    box.style.cssText = 'background:#1e293b;border:1px solid #7f1d1d;border-radius:16px;padding:32px 40px;text-align:center;min-width:280px;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+    popup.innerHTML = '❌ ' + msg + '<span style="cursor:pointer;margin-left:8px;opacity:0.7;" onclick="this.parentElement.remove()">✕</span>';
 
-    box.innerHTML = '<div style="font-size:48px;margin-bottom:8px;">❌</div><div style="color:#fca5a5;font-size:18px;font-weight:600;margin-bottom:20px;">' + msg + '</div><button id="closePopup" style="padding:10px 40px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">OK</button>';
+    var style = document.createElement('style');
+    style.textContent = '@keyframes popIn{from{transform:translateX(-50%) translateY(-30px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}';
+    popup.appendChild(style);
 
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
+    document.body.appendChild(popup);
 
-    document.getElementById('closePopup').addEventListener('click', function () {
-        document.body.removeChild(overlay);
-    });
+    setTimeout(function () {
+        popup.style.transition = 'opacity 0.4s';
+        popup.style.opacity = '0';
+        setTimeout(function () { popup.remove(); }, 400);
+    }, 4000);
 }
 
 // Send
 document.getElementById('sendBtn').addEventListener('click', async function () {
     var token = localStorage.getItem('sessionToken');
-    if (!token) {
-        showError('Please login first.');
-        window.location.href = '/login.html';
-        return;
-    }
-
-    var btn = this;
-    btn.disabled = true;
-    btn.textContent = 'Sending...';
-
-    var res = await fetch('/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            token: token,
-            senderName: document.getElementById('senderName').value,
-            gmail: document.getElementById('gmail').value,
-            apppass: document.getElementById('apppass').value,
-            subject: document.getElementById('subject').value,
-            message: document.getElementById('message').value,
-            to: document.getElementById('to').value
-        })
-    });
-
-    var data = await res.json();
-
-    if (data.success) {
-        showResult(data.sent, data.fail);
-    } else {
-        showError(data.msg);
-    }
-
-    btn.disabled = false;
-    btn.textContent = 'Send All';
-});
-
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', function () {
-    fetch('/logout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: localStorage.getItem('sessionToken') })
-    }).finally(function () {
-        localStorage.removeItem('sessionToken');
-        window.location.href = '/login.html';
-    });
-});
