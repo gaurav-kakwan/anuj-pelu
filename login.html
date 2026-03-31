@@ -1,50 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Secure Access</title>
-  <link rel="stylesheet" href="style.css">
+<title>Secure Access</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<div class="login-page">
-  <div class="login-card">
-    <h2 class="login-title">Secure Access</h2>
+ 
+<div class="page">
+<div class="card">
+<h2 class="title">🔐 Secure Access</h2>
+ 
+    <div id="errMsg" style="color:#f87171;font-size:14px;text-align:center;margin-bottom:14px;display:none;"></div>
 
     <div class="form-grid">
-      <input id="username" type="text" placeholder="Username">
-      <input id="password" type="password" placeholder="Password">
-    </div>
-
-    <div class="btn-row">
-      <button onclick="doLogin()">Login</button>
-    </div>
-  </div>
+<div class="row">
+<input id="user" placeholder="Username">
 </div>
-
+ 
+<div class="row">
+<input id="pass" type="password" placeholder="Password">
+</div>
+</div>
+ 
+    <div class="btn-row">
+<button id="loginBtn">Login</button>
+</div>
+</div>
+</div>
+ 
 <script>
-  async function doLogin() {
-    const user = document.getElementById('username').value;
-    const pass = document.getElementById('password').value;
+document.getElementById('loginBtn').addEventListener('click', async function () {
+    var btn = this;
+    var errEl = document.getElementById('errMsg');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
 
-    try {
-      const res = await fetch("/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: user, password: pass })
-      });
+    var res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: document.getElementById('user').value,
+            password: document.getElementById('pass').value
+        })
+    });
 
-      const data = await res.json();
+    var data = await res.json();
 
-      if (data.success) {
-        sessionStorage.setItem("auth", "active");
-        window.location.href = "/index.html";
-      } else {
-        alert(data.msg);
-      }
-    } catch (e) {
-      alert("Connection Error");
+    if (data.success) {
+        localStorage.setItem('sessionToken', data.token);
+        window.location.href = '/index.html';
+    } else {
+        errEl.textContent = data.msg;
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Login';
     }
-  }
+});
+
+document.getElementById('pass').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('loginBtn').click();
+});
 </script>
 </body>
 </html>
