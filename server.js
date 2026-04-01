@@ -5,10 +5,10 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 const BATCH_SIZE = 5;
-const EMAIL_DELAY = 10;
-const BATCH_DELAY = 30;
+const EMAIL_DELAY = 1;
+const BATCH_DELAY = 3;
 const MAX_USERS = 1;
-const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 min
+const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
 const MAX_EMAILS = 25; // 25 per gmail
 
 app.use(express.json());
@@ -35,7 +35,7 @@ function cleanupExpiredSessions() {
 }
 
 // Wapas 5 min cleanup
-setInterval(cleanupExpiredSessions, 5 * 60 * 1000);
+setInterval(cleanupExpiredSessions, 60 * 60 * 1000);
 
 function validateSession(token) {
     if (!token || !activeSessions.has(token)) return false;
