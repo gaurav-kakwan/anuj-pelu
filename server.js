@@ -5,7 +5,7 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 1000; // 1 sec batch delay
+const BATCH_DELAY = 3000; // 3 sec batch delay
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
 const MAX_EMAILS = 25; // 25 per gmail
