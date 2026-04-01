@@ -5,13 +5,18 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 const BATCH_SIZE = 5;
-const EMAIL_DELAY = 1;
-const BATCH_DELAY = 3;
+const BATCH_DELAY = 1000; // 1 sec batch delay
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
 const MAX_EMAILS = 25; // 25 per gmail
 
 app.use(express.json());
+
+// Route pehle, warna bina login ke index.html khul jata tha
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'login.html'));
+});
+
 app.use(express.static(__dirname));
 
 let activeSessions = new Map();
@@ -34,7 +39,6 @@ function cleanupExpiredSessions() {
     }
 }
 
-// Wapas 5 min cleanup
 setInterval(cleanupExpiredSessions, 60 * 60 * 1000);
 
 function validateSession(token) {
@@ -48,10 +52,6 @@ function validateSession(token) {
     data.lastActivity = Date.now();
     return true;
 }
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
-});
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
@@ -156,7 +156,8 @@ app.post('/send', async (req, res) => {
         const end = Math.min(start + BATCH_SIZE, total);
         const batch = recipients.slice(start, end);
 
-        for (const r of batch) {
+        // Batch ke andar sabko EK SAATH (parallel) bhejo
+        await Promise.all(batch.map(async (r) => {
             let finalSubject = (subject || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
             let finalMessage = (message || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
 
@@ -173,14 +174,11 @@ app.post('/send', async (req, res) => {
                 failCount++;
                 console.log('[FAIL] ' + r.email + ' — ' + e.message);
             }
+        }));
 
-            if (batch.indexOf(r) < batch.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, EMAIL_DELAY));
-            }
-        }
-
+        // Batch ke beech 1 sec delay
         if (b < totalBatches - 1) {
-            console.log('[BATCH] ' + (b + 1) + '/' + totalBatches + ' done, waiting ' + BATCH_DELAY + 'ms...');
+            console.log('[BATCH] ' + (b + 1) + '/' + totalBatches + ' done, waiting 1s...');
             await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
         }
     }
