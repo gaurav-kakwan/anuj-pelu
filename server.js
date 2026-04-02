@@ -7,7 +7,7 @@ const port = process.env.PORT || 3000;
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
 const MAX_EMAILS = 25; // 25 per gmail
-const DELAY_BETWEEN_EMAILS = 500; // 1.5 second delay
+const DELAY_BETWEEN_EMAILS = 300; // 1.5 second delay
 
 app.use(express.json());
 
