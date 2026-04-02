@@ -7,7 +7,6 @@ const port = process.env.PORT || 3000;
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
 const MAX_EMAILS = 25; // 25 per gmail
-const DELAY_BETWEEN_EMAILS = 300; // 1.5 second delay
 
 app.use(express.json());
 
@@ -85,63 +84,19 @@ app.post('/check-session', (req, res) => {
     }
 });
 
-function parseRecipients(text) {
-    if (!text) return [];
-    const lines = text.split('\n');
-    const results = [];
-    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        const parts = trimmed.split('\t');
-        let name = '', website = '', email = '';
-
-        if (parts.length >= 3) {
-            name = parts[0].trim();
-            website = parts[1].trim();
-            email = parts[2].trim();
-        } else if (parts.length === 2) {
-            if (emailRe.test(parts[1].trim())) {
-                name = parts[0].trim();
-                email = parts[1].trim();
-            } else if (emailRe.test(parts[0].trim())) {
-                website = parts[0].trim();
-                email = parts[1].trim();
-            }
-        } else {
-            email = parts[0].trim();
-        }
-        if (emailRe.test(email)) {
-            results.push({ name, website, email });
-        }
-    }
-    return results;
-}
-
-// Delay Helper Function
+// --- HELPER FUNCTION: DELAY ---
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- EMAIL SEND API (SERIAL + DELAY) ---
 app.post('/send', async (req, res) => {
-    const { token, senderName, gmail, apppass, subject, message, to } = req.body;
-
-    if (!validateSession(token)) {
-        return res.json({ success: false, msg: "Session expired. Please login again." });
-    }
+    const { senderName, gmail, apppass, subject, message, to } = req.body;
 
     if (!gmail || !apppass || !to) {
         return res.json({ success: false, msg: "Please fill all required fields." });
     }
 
-    const recipients = parseRecipients(to);
-
-    if (recipients.length === 0) {
-        return res.json({ success: false, msg: "No valid recipients found." });
-    }
-
-    if (recipients.length > MAX_EMAILS) {
-        return res.json({ success: false, msg: "Limit: Max " + MAX_EMAILS + " emails per Gmail." });
-    }
+    const recipients = to.split(/[,\n]/).map(e => e.trim()).filter(e => e);
+    if (recipients.length > MAX_EMAILS) return res.json({ success: false, msg: "Limit: Max " + MAX_EMAILS + " emails." });
 
     const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -149,39 +104,28 @@ app.post('/send', async (req, res) => {
     });
 
     let sentCount = 0;
-    let failCount = 0;
-    const total = recipients.length;
 
-    // SERIAL SENDING (Ek ek karke)
-    for (let i = 0; i < total; i++) {
-        const r = recipients[i];
-        
-        // Subject aur Message mein Name replace karo
-        let finalSubject = (subject || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
-        let finalMessage = (message || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
-
+    // Loop: Ek ek karke bhejenge (Serial)
+    for (const email of recipients) {
         try {
             await transporter.sendMail({
-                from: '"' + senderName + '" <' + gmail + '>',
-                to: r.email,
-                subject: finalSubject,
-                text: finalMessage
+                from: `"${senderName}" <${gmail}>`,
+                to: email,
+                subject: subject,
+                text: message
             });
             sentCount++;
-            console.log('[SENT ' + (i+1) + '/' + total + '] ' + r.email);
-        } catch (e) {
-            failCount++;
-            console.log('[FAIL ' + (i+1) + '/' + total + '] ' + r.email + ' — ' + e.message);
-        }
+            console.log(`Sent to: ${email}`);
+            
+            // DELAY: 0.02 Second (20ms) wait karo next email se pehle
+            await wait(20); 
 
-        // Agar last email nahi hai to 1.5 sec wait karo
-        if (i < total - 1) {
-            await wait(DELAY_BETWEEN_EMAILS);
+        } catch (e) {
+            console.log("Error sending to: " + email);
         }
     }
 
-    res.json({ success: true, sent: sentCount, fail: failCount });
-    transporter.close();
+    res.json({ success: true, sent: sentCount });
 });
 
 app.listen(port, '0.0.0.0', () => {
