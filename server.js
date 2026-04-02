@@ -4,11 +4,10 @@ const path = require('path');
 const app = express();
 
 const port = process.env.PORT || 3000;
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 3000; // 3 sec batch delay
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
 const MAX_EMAILS = 25; // 25 per gmail
+const DELAY_BETWEEN_EMAILS = 1500; // 1.5 second delay (25 emails in ~40 sec)
 
 app.use(express.json());
 
@@ -120,6 +119,9 @@ function parseRecipients(text) {
     return results;
 }
 
+// Delay Helper Function
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 app.post('/send', async (req, res) => {
     const { token, senderName, gmail, apppass, subject, message, to } = req.body;
 
@@ -149,37 +151,32 @@ app.post('/send', async (req, res) => {
     let sentCount = 0;
     let failCount = 0;
     const total = recipients.length;
-    const totalBatches = Math.ceil(total / BATCH_SIZE);
 
-    for (let b = 0; b < totalBatches; b++) {
-        const start = b * BATCH_SIZE;
-        const end = Math.min(start + BATCH_SIZE, total);
-        const batch = recipients.slice(start, end);
+    // SERIAL SENDING (Ek ek karke)
+    for (let i = 0; i < total; i++) {
+        const r = recipients[i];
+        
+        // Subject aur Message mein Name replace karo
+        let finalSubject = (subject || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
+        let finalMessage = (message || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
 
-        // Batch ke andar sabko EK SAATH (parallel) bhejo
-        await Promise.all(batch.map(async (r) => {
-            let finalSubject = (subject || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
-            let finalMessage = (message || '').replace(/\{greet\}/g, r.name).replace(/\{website\}/g, r.website);
+        try {
+            await transporter.sendMail({
+                from: '"' + senderName + '" <' + gmail + '>',
+                to: r.email,
+                subject: finalSubject,
+                text: finalMessage
+            });
+            sentCount++;
+            console.log('[SENT ' + (i+1) + '/' + total + '] ' + r.email);
+        } catch (e) {
+            failCount++;
+            console.log('[FAIL ' + (i+1) + '/' + total + '] ' + r.email + ' — ' + e.message);
+        }
 
-            try {
-                await transporter.sendMail({
-                    from: '"' + senderName + '" <' + gmail + '>',
-                    to: r.email,
-                    subject: finalSubject,
-                    text: finalMessage
-                });
-                sentCount++;
-                console.log('[SENT] ' + r.email + ' (' + r.name + ')');
-            } catch (e) {
-                failCount++;
-                console.log('[FAIL] ' + r.email + ' — ' + e.message);
-            }
-        }));
-
-        // Batch ke beech 1 sec delay
-        if (b < totalBatches - 1) {
-            console.log('[BATCH] ' + (b + 1) + '/' + totalBatches + ' done, waiting 1s...');
-            await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        // Agar last email nahi hai to 1.5 sec wait karo
+        if (i < total - 1) {
+            await wait(DELAY_BETWEEN_EMAILS);
         }
     }
 
