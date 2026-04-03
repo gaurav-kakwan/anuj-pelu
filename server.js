@@ -53,7 +53,7 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "admin" && password === "kakwan") {
+    if (username === "subhangi" && password === "kakwan") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
             return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
@@ -87,7 +87,7 @@ app.post('/check-session', (req, res) => {
 // --- HELPER FUNCTION: DELAY ---
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- EMAIL SEND API (SERIAL + DELAY) ---
+// --- EMAIL SEND API (BATCH 5 + INDIVIDUAL + 3 SEC BATCH WAIT) ---
 app.post('/send', async (req, res) => {
     const { senderName, gmail, apppass, subject, message, to } = req.body;
 
@@ -104,27 +104,40 @@ app.post('/send', async (req, res) => {
     });
 
     let sentCount = 0;
+    const BATCH_SIZE = 3;
+    const BATCH_DELAY = 2000; // 3 seconds between batches
 
-    // Loop: Ek ek karke bhejenge (Serial)
-    for (const email of recipients) {
-        try {
-            await transporter.sendMail({
-                from: `"${senderName}" <${gmail}>`,
-                to: email,
-                subject: subject,
-                text: message
-            });
-            sentCount++;
-            console.log(`Sent to: ${email}`);
-            
-            // DELAY: 0.02 Second (20ms) wait karo next email se pehle
-            await wait(20); 
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+        const batch = recipients.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
 
-        } catch (e) {
-            console.log("Error sending to: " + email);
+        console.log(`[BATCH ${batchNum}/${totalBatches}] Started — ${batch.length} emails`);
+
+        // Batch ke andar ek ek karke bhejo (individual)
+        for (const email of batch) {
+            try {
+                await transporter.sendMail({
+                    from: `"${senderName}" <${gmail}>`,
+                    to: email,
+                    subject: subject,
+                    text: message
+                });
+                sentCount++;
+                console.log(`  ✓ Sent to: ${email}`);
+            } catch (e) {
+                console.log(`  ✗ Failed: ${email}`);
+            }
+        }
+
+        // Agla batch se pehle 3 sec wait — LAST BATCH ke baad nahi
+        if (i + BATCH_SIZE < recipients.length) {
+            console.log(`[BATCH ${batchNum}/${totalBatches}] Done. Waiting 3 seconds...`);
+            await wait(BATCH_DELAY);
         }
     }
 
+    console.log(`[DONE] Total sent: ${sentCount}/${recipients.length}`);
     res.json({ success: true, sent: sentCount });
 });
 
