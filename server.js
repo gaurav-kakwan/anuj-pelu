@@ -3,10 +3,10 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 const app = express();
 
-const port = process.env.PORT || 3000;
+const port = 80; // Port 80 set kiya
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
-const MAX_EMAILS = 25; // 25 per gmail
+const MAX_EMAILS = 25; // Limit 500 kiya
 
 app.use(express.json());
 
@@ -87,7 +87,48 @@ app.post('/check-session', (req, res) => {
 // --- HELPER FUNCTION: DELAY ---
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- EMAIL SEND API (BATCH 5 + INDIVIDUAL + 3 SEC BATCH WAIT) ---
+// --- EXCEL DATA PARSER ---
+function parseExcelData(raw) {
+    const lines = raw.split(/\n/).map(l => l.trim()).filter(l => l);
+    const entries = [];
+
+    for (const line of lines) {
+        // Excel se paste = Tab separated
+        const parts = line.split(/\t/);
+
+        if (parts.length >= 3) {
+            entries.push({
+                greet: parts[0].trim(),
+                website: parts[1].trim(),
+                email: parts[2].trim()
+            });
+        } else if (parts.length === 2) {
+            // Sirf Name + Email ho toh
+            entries.push({
+                greet: parts[0].trim(),
+                website: '',
+                email: parts[1].trim()
+            });
+        } else {
+            // Purana style sirf email
+            const email = parts[0].trim();
+            if (email.includes('@')) {
+                entries.push({ greet: '', website: '', email: email });
+            }
+        }
+    }
+
+    return entries.filter(e => e.email && e.email.includes('@'));
+}
+
+// --- TEMPLATE REPLACER ---
+function fillTemplate(template, greet, website) {
+    return template
+        .replace(/\{greet\}/gi, greet)
+        .replace(/\{website\}/gi, website);
+}
+
+// --- EMAIL SEND API (BATCH OF 5 + INDIVIDUAL + 3 SEC BATCH WAIT) ---
 app.post('/send', async (req, res) => {
     const { senderName, gmail, apppass, subject, message, to } = req.body;
 
@@ -95,8 +136,18 @@ app.post('/send', async (req, res) => {
         return res.json({ success: false, msg: "Please fill all required fields." });
     }
 
-    const recipients = to.split(/[,\n]/).map(e => e.trim()).filter(e => e);
-    if (recipients.length > MAX_EMAILS) return res.json({ success: false, msg: "Limit: Max " + MAX_EMAILS + " emails." });
+    const entries = parseExcelData(to);
+
+    if (entries.length === 0) {
+        return res.json({ success: false, msg: "No valid emails found. Paste Excel data: Name \t Website \t Email" });
+    }
+
+    if (entries.length > MAX_EMAILS) {
+        return res.json({ success: false, msg: "Limit: Max " + MAX_EMAILS + " emails." });
+    }
+
+    console.log(`[PARSED] ${entries.length} entries found`);
+    console.log(`[SAMPLE] First: "${entries[0].greet}" | "${entries[0].website}" | "${entries[0].email}"`);
 
     const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -104,41 +155,47 @@ app.post('/send', async (req, res) => {
     });
 
     let sentCount = 0;
-    const BATCH_SIZE = 3;
+    let failCount = 0;
+    const BATCH_SIZE = 3; // 5 ke batch
     const BATCH_DELAY = 2000; // 3 seconds between batches
 
-    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-        const batch = recipients.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        const batch = entries.slice(i, i + BATCH_SIZE);
         const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
+        const totalBatches = Math.ceil(entries.length / BATCH_SIZE);
 
-        console.log(`[BATCH ${batchNum}/${totalBatches}] Started — ${batch.length} emails`);
+        console.log(`\n[BATCH ${batchNum}/${totalBatches}] Started — ${batch.length} emails`);
 
         // Batch ke andar ek ek karke bhejo (individual)
-        for (const email of batch) {
+        for (const entry of batch) {
             try {
+                // Har email ke liye template fill karo
+                const finalSubject = fillTemplate(subject, entry.greet, entry.website);
+                const finalMessage = fillTemplate(message, entry.greet, entry.website);
+
                 await transporter.sendMail({
                     from: `"${senderName}" <${gmail}>`,
-                    to: email,
-                    subject: subject,
-                    text: message
+                    to: entry.email,
+                    subject: finalSubject,
+                    text: finalMessage
                 });
                 sentCount++;
-                console.log(`  ✓ Sent to: ${email}`);
+                console.log(`  ✓ [${entry.greet}] → ${entry.email}`);
             } catch (e) {
-                console.log(`  ✗ Failed: ${email}`);
+                failCount++;
+                console.log(`  ✗ [${entry.greet}] → ${entry.email} | Error: ${e.message}`);
             }
         }
 
         // Agla batch se pehle 3 sec wait — LAST BATCH ke baad nahi
-        if (i + BATCH_SIZE < recipients.length) {
+        if (i + BATCH_SIZE < entries.length) {
             console.log(`[BATCH ${batchNum}/${totalBatches}] Done. Waiting 3 seconds...`);
             await wait(BATCH_DELAY);
         }
     }
 
-    console.log(`[DONE] Total sent: ${sentCount}/${recipients.length}`);
-    res.json({ success: true, sent: sentCount });
+    console.log(`\n[DONE] Sent: ${sentCount} | Failed: ${failCount} | Total: ${entries.length}`);
+    res.json({ success: true, sent: sentCount, failed: failCount, total: entries.length });
 });
 
 app.listen(port, '0.0.0.0', () => {
