@@ -3,10 +3,10 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 const app = express();
 
-const port = 80; // Port 80 set kiya
+const port = 80; // Port 80
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
-const MAX_EMAILS =75; // Limit 500 kiya
+const MAX_EMAILS = 25; // Limit 25
 
 app.use(express.json());
 
@@ -56,7 +56,7 @@ app.post('/login', (req, res) => {
     if (username === "subhangi" && password === "kakwan") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
-            return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
+            return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + ' users allowed." });
         }
         const token = generateToken();
         activeSessions.set(token, { loginTime: Date.now(), lastActivity: Date.now() });
@@ -93,24 +93,29 @@ function parseExcelData(raw) {
     const entries = [];
 
     for (const line of lines) {
-        // Excel se paste = Tab separated
         const parts = line.split(/\t/);
 
         if (parts.length >= 3) {
+            let greet = parts[0].trim();
+            let website = parts[1].trim();
+            
+            // Agar dono same hain toh ek hi count kare
+            if (greet === website) {
+                website = greet;
+            }
+
             entries.push({
-                greet: parts[0].trim(),
-                website: parts[1].trim(),
+                greet: greet,
+                website: website,
                 email: parts[2].trim()
             });
         } else if (parts.length === 2) {
-            // Sirf Name + Email ho toh
             entries.push({
                 greet: parts[0].trim(),
                 website: '',
                 email: parts[1].trim()
             });
         } else {
-            // Purana style sirf email
             const email = parts[0].trim();
             if (email.includes('@')) {
                 entries.push({ greet: '', website: '', email: email });
@@ -122,10 +127,12 @@ function parseExcelData(raw) {
 }
 
 // --- TEMPLATE REPLACER ---
-function fillTemplate(template, greet, website) {
+function fillTemplate(template, greet, website, signature, senderEmail) {
     return template
         .replace(/\{greet\}/gi, greet)
-        .replace(/\{website\}/gi, website);
+        .replace(/\{website\}/gi, website)
+        .replace(/\{signature\}/gi, signature) 
+        .replace(/\{email\}/gi, senderEmail); // Sender ki email yahan aayegi
 }
 
 // --- EMAIL SEND API (BATCH OF 5 + INDIVIDUAL + 3 SEC BATCH WAIT) ---
@@ -147,7 +154,6 @@ app.post('/send', async (req, res) => {
     }
 
     console.log(`[PARSED] ${entries.length} entries found`);
-    console.log(`[SAMPLE] First: "${entries[0].greet}" | "${entries[0].website}" | "${entries[0].email}"`);
 
     const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -166,12 +172,11 @@ app.post('/send', async (req, res) => {
 
         console.log(`\n[BATCH ${batchNum}/${totalBatches}] Started — ${batch.length} emails`);
 
-        // Batch ke andar ek ek karke bhejo (individual)
         for (const entry of batch) {
             try {
-                // Har email ke liye template fill karo
-                const finalSubject = fillTemplate(subject, entry.greet, entry.website);
-                const finalMessage = fillTemplate(message, entry.greet, entry.website);
+                // Template mein {greet}, {website}, {signature} aur {email} replace karo
+                const finalSubject = fillTemplate(subject, entry.greet, entry.website, senderName, gmail);
+                const finalMessage = fillTemplate(message, entry.greet, entry.website, senderName, gmail);
 
                 await transporter.sendMail({
                     from: `"${senderName}" <${gmail}>`,
