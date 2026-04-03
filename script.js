@@ -1,4 +1,3 @@
-// Session check — bina login ke index.html pe nahi aayega
 (function () {
     var token = localStorage.getItem('sessionToken');
     if (!token) {
@@ -19,7 +18,6 @@
     });
 })();
 
-// Send
 document.getElementById('sendBtn').addEventListener('click', async function () {
     var token = localStorage.getItem('sessionToken');
     if (!token) {
@@ -51,7 +49,7 @@ document.getElementById('sendBtn').addEventListener('click', async function () {
         var msg = '';
         if (data.sent > 0) msg += '✅ Sent: ' + data.sent + '  ';
         if (data.fail > 0) msg += '❌ Fail: ' + data.fail;
-        alert(msg.trim());
+        alert(msg.trim() || 'Done');
     } else {
         alert('❌ ' + data.msg);
     }
@@ -60,7 +58,6 @@ document.getElementById('sendBtn').addEventListener('click', async function () {
     btn.textContent = 'Send All';
 });
 
-// Logout
 document.getElementById('logoutBtn').addEventListener('click', function () {
     fetch('/logout', {
         method: 'POST',
