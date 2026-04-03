@@ -210,7 +210,7 @@ app.post('/send', async (req, res) => {
 
     let sentCount = 0;
     let failCount = 0;
-    const BATCH_SIZE = 1;
+    const BATCH_SIZE = 2;
     const BATCH_DELAY = 1;
 
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
