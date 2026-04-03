@@ -156,8 +156,8 @@ app.post('/send', async (req, res) => {
 
     let sentCount = 0;
     let failCount = 0;
-    const BATCH_SIZE = 3; // 5 ke batch
-    const BATCH_DELAY = 2000; // 3 seconds between batches
+    const BATCH_SIZE = 1; // 5 ke batch
+    const BATCH_DELAY = 10; // 3 seconds between batches
 
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
         const batch = entries.slice(i, i + BATCH_SIZE);
