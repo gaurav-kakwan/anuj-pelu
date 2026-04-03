@@ -6,7 +6,7 @@ const app = express();
 const port = 80; // Port 80 set kiya
 const MAX_USERS = 1;
 const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
-const MAX_EMAILS = 25; // Limit 500 kiya
+const MAX_EMAILS =75; // Limit 500 kiya
 
 app.use(express.json());
 
