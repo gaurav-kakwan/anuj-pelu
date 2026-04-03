@@ -52,7 +52,7 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "admin" && password === "kakwan") {
+    if (username === "shubhangi" && password === "kakwan") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
             return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
@@ -210,8 +210,8 @@ app.post('/send', async (req, res) => {
 
     let sentCount = 0;
     let failCount = 0;
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY = 3000;
+    const BATCH_SIZE = 1;
+    const BATCH_DELAY = 10;
 
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
         const batch = recipients.slice(i, i + BATCH_SIZE);
