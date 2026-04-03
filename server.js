@@ -3,14 +3,13 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 const app = express();
 
-const port = 80; // Port 80
+const port = process.env.PORT || 3000;
 const MAX_USERS = 1;
-const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 min
-const MAX_EMAILS = 25; // Limit 25
+const SESSION_TIMEOUT = 60 * 60 * 1000;
+const MAX_EMAILS = 25;
 
 app.use(express.json());
 
-// Route pehle, warna bina login ke index.html khul jata tha
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
@@ -53,10 +52,10 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "subhangi" && password === "kakwan") {
+    if (username === "admin" && password === "kakwan") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
-            return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + ' users allowed." });
+            return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
         }
         const token = generateToken();
         activeSessions.set(token, { loginTime: Date.now(), lastActivity: Date.now() });
@@ -84,58 +83,107 @@ app.post('/check-session', (req, res) => {
     }
 });
 
-// --- HELPER FUNCTION: DELAY ---
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- EXCEL DATA PARSER ---
-function parseExcelData(raw) {
-    const lines = raw.split(/\n/).map(l => l.trim()).filter(l => l);
-    const entries = [];
+function replaceTags(str, greet, website, signature, email) {
+    return str
+        .replace(/\{greet\}/gi, greet || '')
+        .replace(/\{website\}/gi, website || '')
+        .replace(/\{signature\}/gi, signature || '')
+        .replace(/\{email\}/gi, email || '');
+}
+
+// Smart parser — sirf real emails count karega, comma ya space se confuse nahi hoga
+function parseRecipients(raw) {
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
+    const list = [];
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
     for (const line of lines) {
-        const parts = line.split(/\t/);
-
+        let parts = line.split('\t').map(p => p.trim()).filter(p => p);
+        
+        // 1. Excel Tab separated
         if (parts.length >= 3) {
-            let greet = parts[0].trim();
-            let website = parts[1].trim();
+            list.push({ greet: parts[0], website: parts[1], email: parts[parts.length - 1] });
+            continue;
+        }
+        
+        if (parts.length === 2) {
+            if (!emailRegex.test(parts[0]) && emailRegex.test(parts[1])) {
+                list.push({ greet: parts[0], website: '', email: parts[1] });
+            } else if (emailRegex.test(parts[0]) && emailRegex.test(parts[1])) {
+                list.push({ greet: '', website: '', email: parts[0] });
+                list.push({ greet: '', website: '', email: parts[1] });
+            }
+            continue;
+        }
+
+        // 2. No tabs — Comma, Space, ya plain text
+        if (parts.length === 1) {
+            const str = parts[0];
             
-            // Agar dono same hain toh ek hi count kare
-            if (greet === website) {
-                website = greet;
+            if (str.includes(',')) {
+                const commaParts = str.split(',').map(p => p.trim()).filter(p => p);
+                // Sirf valid emails nikalo
+                const validEmails = commaParts.filter(p => emailRegex.test(p));
+                
+                if (validEmails.length === 1) {
+                    // 1 real email mila = 1 row hai (chahe andar kitni comma ho)
+                    const emailIdx = commaParts.findIndex(p => p === validEmails[0]);
+                    let greet = '';
+                    let website = '';
+                    
+                    if (emailIdx === commaParts.length - 1) {
+                        if (emailIdx >= 2) {
+                            greet = commaParts.slice(0, emailIdx - 1).join(', ').trim();
+                            website = commaParts[emailIdx - 1].trim();
+                        } else if (emailIdx === 1) {
+                            greet = commaParts[0].trim();
+                        }
+                    } else {
+                        greet = commaParts.slice(0, emailIdx).join(', ').trim();
+                    }
+                    
+                    list.push({ greet, website, email: validEmails[0] });
+                } else if (validEmails.length > 1) {
+                    // Multiple real emails (sirf email wala case)
+                    for (const e of validEmails) {
+                        list.push({ greet: '', website: '', email: e });
+                    }
+                } else {
+                    // Koi valid email nahi mila
+                    for (const p of commaParts) {
+                        list.push({ greet: '', website: '', email: p });
+                    }
+                }
+                continue;
             }
 
-            entries.push({
-                greet: greet,
-                website: website,
-                email: parts[2].trim()
-            });
-        } else if (parts.length === 2) {
-            entries.push({
-                greet: parts[0].trim(),
-                website: '',
-                email: parts[1].trim()
-            });
-        } else {
-            const email = parts[0].trim();
-            if (email.includes('@')) {
-                entries.push({ greet: '', website: '', email: email });
+            // 3. Space separated (web table copy)
+            const match = str.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            if (match) {
+                const email = match[0];
+                const remaining = str.replace(email, '').trim();
+                const remainingParts = remaining.split(/\s+/).filter(p => p);
+                let greet = '';
+                let website = '';
+                if (remainingParts.length >= 2) {
+                    greet = remainingParts.slice(0, -1).join(' ');
+                    website = remainingParts[remainingParts.length - 1];
+                } else if (remainingParts.length === 1) {
+                    greet = remainingParts[0];
+                }
+                list.push({ greet, website, email });
+                continue;
             }
+
+            // 4. Plain string
+            list.push({ greet: '', website: '', email: str });
         }
     }
-
-    return entries.filter(e => e.email && e.email.includes('@'));
+    return list;
 }
 
-// --- TEMPLATE REPLACER ---
-function fillTemplate(template, greet, website, signature, senderEmail) {
-    return template
-        .replace(/\{greet\}/gi, greet)
-        .replace(/\{website\}/gi, website)
-        .replace(/\{signature\}/gi, signature) 
-        .replace(/\{email\}/gi, senderEmail); // Sender ki email yahan aayegi
-}
-
-// --- EMAIL SEND API (BATCH OF 5 + INDIVIDUAL + 3 SEC BATCH WAIT) ---
 app.post('/send', async (req, res) => {
     const { senderName, gmail, apppass, subject, message, to } = req.body;
 
@@ -143,17 +191,17 @@ app.post('/send', async (req, res) => {
         return res.json({ success: false, msg: "Please fill all required fields." });
     }
 
-    const entries = parseExcelData(to);
+    const recipients = parseRecipients(to);
 
-    if (entries.length === 0) {
-        return res.json({ success: false, msg: "No valid emails found. Paste Excel data: Name \t Website \t Email" });
+    if (recipients.length === 0) {
+        return res.json({ success: false, msg: "No valid recipients found." });
     }
-
-    if (entries.length > MAX_EMAILS) {
+    if (recipients.length > MAX_EMAILS) {
         return res.json({ success: false, msg: "Limit: Max " + MAX_EMAILS + " emails." });
     }
 
-    console.log(`[PARSED] ${entries.length} entries found`);
+    const personalCount = recipients.filter(r => r.greet || r.website).length;
+    console.log('[INFO] Total: ' + recipients.length + ' | Personalized: ' + personalCount + ' | Plain: ' + (recipients.length - personalCount));
 
     const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -162,45 +210,54 @@ app.post('/send', async (req, res) => {
 
     let sentCount = 0;
     let failCount = 0;
-    const BATCH_SIZE = 1; // 5 ke batch
-    const BATCH_DELAY = 10; // 3 seconds between batches
+    const BATCH_SIZE = 5;
+    const BATCH_DELAY = 3000;
 
-    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-        const batch = entries.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+        const batch = recipients.slice(i, i + BATCH_SIZE);
         const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(entries.length / BATCH_SIZE);
+        const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
 
-        console.log(`\n[BATCH ${batchNum}/${totalBatches}] Started — ${batch.length} emails`);
+        console.log('[BATCH ' + batchNum + '/' + totalBatches + '] Sending ' + batch.length + ' emails...');
 
-        for (const entry of batch) {
-            try {
-                // Template mein {greet}, {website}, {signature} aur {email} replace karo
-                const finalSubject = fillTemplate(subject, entry.greet, entry.website, senderName, gmail);
-                const finalMessage = fillTemplate(message, entry.greet, entry.website, senderName, gmail);
+        const results = await Promise.allSettled(
+            batch.map(async (recipient) => {
+                const personalSubject = replaceTags(subject, recipient.greet, recipient.website, senderName, gmail);
+                const personalMessage = replaceTags(message, recipient.greet, recipient.website, senderName, gmail);
 
                 await transporter.sendMail({
-                    from: `"${senderName}" <${gmail}>`,
-                    to: entry.email,
-                    subject: finalSubject,
-                    text: finalMessage
+                    from: '"' + senderName + '" <' + gmail + '>',
+                    to: recipient.email,
+                    subject: personalSubject,
+                    text: personalMessage
                 });
+                return recipient;
+            })
+        );
+
+        for (const r of results) {
+            if (r.status === 'fulfilled') {
                 sentCount++;
-                console.log(`  ✓ [${entry.greet}] → ${entry.email}`);
-            } catch (e) {
+                const rec = r.value;
+                if (rec.greet) {
+                    console.log('  ✓ [' + rec.greet + '] → ' + rec.email);
+                } else {
+                    console.log('  ✓ → ' + rec.email);
+                }
+            } else {
                 failCount++;
-                console.log(`  ✗ [${entry.greet}] → ${entry.email} | Error: ${e.message}`);
+                console.log('  ✗ Error: ' + (r.reason && r.reason.response ? r.reason.response.to : 'unknown'));
             }
         }
 
-        // Agla batch se pehle 3 sec wait — LAST BATCH ke baad nahi
-        if (i + BATCH_SIZE < entries.length) {
-            console.log(`[BATCH ${batchNum}/${totalBatches}] Done. Waiting 3 seconds...`);
+        if (i + BATCH_SIZE < recipients.length) {
+            console.log('[BATCH ' + batchNum + '/' + totalBatches + '] Done. Waiting 3 seconds...');
             await wait(BATCH_DELAY);
         }
     }
 
-    console.log(`\n[DONE] Sent: ${sentCount} | Failed: ${failCount} | Total: ${entries.length}`);
-    res.json({ success: true, sent: sentCount, failed: failCount, total: entries.length });
+    console.log('[DONE] Sent: ' + sentCount + ' | Fail: ' + failCount);
+    res.json({ success: true, sent: sentCount, fail: failCount });
 });
 
 app.listen(port, '0.0.0.0', () => {
