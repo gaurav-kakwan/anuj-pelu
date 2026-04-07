@@ -8,6 +8,17 @@ const MAX_USERS = 10;
 const SESSION_TIMEOUT = 60 * 60 * 1000;
 const MAX_EMAILS = 25;
 
+// CORS FIX: Dusre system se aane wale responses block nahi honge
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
@@ -52,7 +63,7 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "admin" && password === "2026") {
+    if (username === "admin" && password === "@2026") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
             return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
@@ -91,7 +102,6 @@ function replaceTags(str, greet, website, signature, email) {
         .replace(/\{email\}/gi, email || '');
 }
 
-// Smart parser — sirf real emails count karega, comma ya space se confuse nahi hoga
 function parseRecipients(raw) {
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
     const list = [];
@@ -100,7 +110,6 @@ function parseRecipients(raw) {
     for (const line of lines) {
         let parts = line.split('\t').map(p => p.trim()).filter(p => p);
         
-        // 1. Excel Tab separated
         if (parts.length >= 3) {
             list.push({ greet: parts[0], website: parts[1], email: parts[parts.length - 1] });
             continue;
@@ -116,17 +125,14 @@ function parseRecipients(raw) {
             continue;
         }
 
-        // 2. No tabs — Comma, Space, ya plain text
         if (parts.length === 1) {
             const str = parts[0];
             
             if (str.includes(',')) {
                 const commaParts = str.split(',').map(p => p.trim()).filter(p => p);
-                // Sirf valid emails nikalo
                 const validEmails = commaParts.filter(p => emailRegex.test(p));
                 
                 if (validEmails.length === 1) {
-                    // 1 real email mila = 1 row hai (chahe andar kitni comma ho)
                     const emailIdx = commaParts.findIndex(p => p === validEmails[0]);
                     let greet = '';
                     let website = '';
@@ -144,12 +150,10 @@ function parseRecipients(raw) {
                     
                     list.push({ greet, website, email: validEmails[0] });
                 } else if (validEmails.length > 1) {
-                    // Multiple real emails (sirf email wala case)
                     for (const e of validEmails) {
                         list.push({ greet: '', website: '', email: e });
                     }
                 } else {
-                    // Koi valid email nahi mila
                     for (const p of commaParts) {
                         list.push({ greet: '', website: '', email: p });
                     }
@@ -157,7 +161,6 @@ function parseRecipients(raw) {
                 continue;
             }
 
-            // 3. Space separated (web table copy)
             const match = str.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
             if (match) {
                 const email = match[0];
@@ -175,7 +178,6 @@ function parseRecipients(raw) {
                 continue;
             }
 
-            // 4. Plain string
             list.push({ greet: '', website: '', email: str });
         }
     }
@@ -201,9 +203,13 @@ app.post('/send', async (req, res) => {
     const personalCount = recipients.filter(r => r.greet || r.website).length;
     console.log('[INFO] Total: ' + recipients.length + ' | Personalized: ' + personalCount + ' | Plain: ' + (recipients.length - personalCount));
 
+    // TIMEOUT FIX: Agar Gmail hang kare toh code aage nahi atkega
     const transporter = nodemailer.createTransport({
         service: 'gmail',
-        auth: { user: gmail, pass: apppass }
+        auth: { user: gmail, pass: apppass },
+        connectionTimeout: 10000, // 10 sec mein connect ho ya fail
+        greetingTimeout: 5000,   // 5 sec mein greet ho ya fail
+        socketTimeout: 10000     // 10 sec mein email send ho ya fail
     });
 
     let sentCount = 0;
@@ -211,7 +217,6 @@ app.post('/send', async (req, res) => {
     let i = 0;
 
     while (i < recipients.length) {
-        // Randomly decide: 1 email bhejo ya 2 saath mein bhejo
         const batchSize = Math.random() > 0.5 ? 2 : 1;
         const batch = recipients.slice(i, i + batchSize);
 
@@ -232,9 +237,9 @@ app.post('/send', async (req, res) => {
                     } else {
                         console.log('  ✓ → ' + recipient.email);
                     }
-                }).catch(() => {
+                }).catch((err) => {
                     failCount++;
-                    console.log('  ✗ Error → ' + recipient.email);
+                    console.log('  ✗ Error → ' + recipient.email + ' | ' + (err.message || 'Timeout'));
                 });
             })
         );
