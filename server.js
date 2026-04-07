@@ -52,7 +52,7 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "shubhangi" && password === "kakwan") {
+    if (username === "admin" && password === "kakwan") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
             return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
@@ -82,8 +82,6 @@ app.post('/check-session', (req, res) => {
         res.json({ valid: false });
     }
 });
-
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function replaceTags(str, greet, website, signature, email) {
     return str
@@ -210,51 +208,37 @@ app.post('/send', async (req, res) => {
 
     let sentCount = 0;
     let failCount = 0;
-    const BATCH_SIZE = 2;
-    const BATCH_DELAY = 1;
+    
+    let chain = Promise.resolve();
 
-    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-        const batch = recipients.slice(i, i + BATCH_SIZE);
-        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
+    for (let i = 0; i < recipients.length; i++) {
+        const recipient = recipients[i];
+        const personalSubject = replaceTags(subject, recipient.greet, recipient.website, senderName, gmail);
+        const personalMessage = replaceTags(message, recipient.greet, recipient.website, senderName, gmail);
 
-        console.log('[BATCH ' + batchNum + '/' + totalBatches + '] Sending ' + batch.length + ' emails...');
-
-        const results = await Promise.allSettled(
-            batch.map(async (recipient) => {
-                const personalSubject = replaceTags(subject, recipient.greet, recipient.website, senderName, gmail);
-                const personalMessage = replaceTags(message, recipient.greet, recipient.website, senderName, gmail);
-
-                await transporter.sendMail({
-                    from: '"' + senderName + '" <' + gmail + '>',
-                    to: recipient.email,
-                    subject: personalSubject,
-                    text: personalMessage
-                });
-                return recipient;
+        chain = chain.then(() => 
+            transporter.sendMail({
+                from: '"' + senderName + '" <' + gmail + '>',
+                to: recipient.email,
+                subject: personalSubject,
+                text: personalMessage
+            })
+            .then(() => {
+                sentCount++;
+                if (recipient.greet) {
+                    console.log('  ✓ [' + recipient.greet + '] → ' + recipient.email);
+                } else {
+                    console.log('  ✓ → ' + recipient.email);
+                }
+            })
+            .catch(() => {
+                failCount++;
+                console.log('  ✗ Error → ' + recipient.email);
             })
         );
-
-        for (const r of results) {
-            if (r.status === 'fulfilled') {
-                sentCount++;
-                const rec = r.value;
-                if (rec.greet) {
-                    console.log('  ✓ [' + rec.greet + '] → ' + rec.email);
-                } else {
-                    console.log('  ✓ → ' + rec.email);
-                }
-            } else {
-                failCount++;
-                console.log('  ✗ Error: ' + (r.reason && r.reason.response ? r.reason.response.to : 'unknown'));
-            }
-        }
-
-        if (i + BATCH_SIZE < recipients.length) {
-            console.log('[BATCH ' + batchNum + '/' + totalBatches + '] Done. Waiting 3 seconds...');
-            await wait(BATCH_DELAY);
-        }
     }
+
+    await chain;
 
     console.log('[DONE] Sent: ' + sentCount + ' | Fail: ' + failCount);
     res.json({ success: true, sent: sentCount, fail: failCount });
