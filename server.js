@@ -52,7 +52,7 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "admin" && password === "kakwan") {
+    if (username === "shubhangi" && password === "kakwan") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
             return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
@@ -208,37 +208,39 @@ app.post('/send', async (req, res) => {
 
     let sentCount = 0;
     let failCount = 0;
-    
-    let chain = Promise.resolve();
+    let i = 0;
 
-    for (let i = 0; i < recipients.length; i++) {
-        const recipient = recipients[i];
-        const personalSubject = replaceTags(subject, recipient.greet, recipient.website, senderName, gmail);
-        const personalMessage = replaceTags(message, recipient.greet, recipient.website, senderName, gmail);
+    while (i < recipients.length) {
+        // Randomly decide: 1 email bhejo ya 2 saath mein bhejo
+        const batchSize = Math.random() > 0.5 ? 2 : 1;
+        const batch = recipients.slice(i, i + batchSize);
 
-        chain = chain.then(() => 
-            transporter.sendMail({
-                from: '"' + senderName + '" <' + gmail + '>',
-                to: recipient.email,
-                subject: personalSubject,
-                text: personalMessage
-            })
-            .then(() => {
-                sentCount++;
-                if (recipient.greet) {
-                    console.log('  ✓ [' + recipient.greet + '] → ' + recipient.email);
-                } else {
-                    console.log('  ✓ → ' + recipient.email);
-                }
-            })
-            .catch(() => {
-                failCount++;
-                console.log('  ✗ Error → ' + recipient.email);
+        const results = await Promise.allSettled(
+            batch.map(recipient => {
+                const personalSubject = replaceTags(subject, recipient.greet, recipient.website, senderName, gmail);
+                const personalMessage = replaceTags(message, recipient.greet, recipient.website, senderName, gmail);
+
+                return transporter.sendMail({
+                    from: '"' + senderName + '" <' + gmail + '>',
+                    to: recipient.email,
+                    subject: personalSubject,
+                    text: personalMessage
+                }).then(() => {
+                    sentCount++;
+                    if (recipient.greet) {
+                        console.log('  ✓ [' + recipient.greet + '] → ' + recipient.email);
+                    } else {
+                        console.log('  ✓ → ' + recipient.email);
+                    }
+                }).catch(() => {
+                    failCount++;
+                    console.log('  ✗ Error → ' + recipient.email);
+                });
             })
         );
-    }
 
-    await chain;
+        i += batchSize;
+    }
 
     console.log('[DONE] Sent: ' + sentCount + ' | Fail: ' + failCount);
     res.json({ success: true, sent: sentCount, fail: failCount });
