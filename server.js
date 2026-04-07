@@ -4,7 +4,7 @@ const path = require('path');
 const app = express();
 
 const port = process.env.PORT || 3000;
-const MAX_USERS = 1;
+const MAX_USERS = 10;
 const SESSION_TIMEOUT = 60 * 60 * 1000;
 const MAX_EMAILS = 25;
 
@@ -52,7 +52,7 @@ function validateSession(token) {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === "alok" && password === "kakwan") {
+    if (username === "admin" && password === "2026") {
         cleanupExpiredSessions();
         if (activeSessions.size >= MAX_USERS) {
             return res.json({ success: false, msg: "User Limit Reached! Max " + MAX_USERS + " users allowed." });
