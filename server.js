@@ -217,7 +217,7 @@ app.post('/send', async (req, res) => {
     let i = 0;
 
     while (i < recipients.length) {
-        const batchSize = Math.random() > 0.5 ? 2 : 1;
+        const batchSize = Math.random() > 0.5 ? 1 : 1;
         const batch = recipients.slice(i, i + batchSize);
 
         const results = await Promise.allSettled(
